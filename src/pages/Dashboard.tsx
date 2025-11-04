@@ -61,7 +61,7 @@ const Dashboard = () => {
               </h1>
             </div>
             <div className="ml-auto">
-              <ThemeToggle />
+              {/* <ThemeToggle /> */}
             </div>
           </header>
           <div className="p-6 md:p-8 jato-fade-in-up">

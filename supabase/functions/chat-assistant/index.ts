@@ -50,27 +50,95 @@ async function toolCreateFolder(req: Request, args: any) {
   const description = (args?.description ? String(args.description) : null) as string | null;
   if (!name) throw new Error("Missing folder name");
 
-  // Check for existing folder with the same name
-  const { data: existingFolders, error: checkError } = await supabase
-    .from("folders")
-    .select("name")
-    .eq("tenant_id", tenantId)
-    .ilike("name", name);
+  // Validate folder name length and characters
+  if (name.length > 100) throw new Error("Folder name is too long (max 100 characters)");
+  if (name.length < 1) throw new Error("Folder name cannot be empty");
 
-  if (checkError) throw new Error(`Failed to check for existing folders: ${checkError.message}`);
-  
-  if (existingFolders && existingFolders.length > 0) {
-    throw new Error(`A folder named "${name}" already exists. Please choose a different name.`);
+  try {
+    // Attempt to create the folder directly
+    // The unique constraint will prevent duplicates at the database level
+    const { data, error } = await supabase
+      .from("folders")
+      .insert({ name, description, tenant_id: tenantId, created_by: userId })
+      .select("id, name, description")
+      .single();
+
+    if (error) {
+      // Check if the error is due to unique constraint violation
+      if (error.code === '23505' || error.message?.includes('duplicate') || error.message?.includes('unique')) {
+        throw new Error(`A folder named "${name}" already exists. Please choose a different name.`);
+      }
+      throw new Error(`Failed to create folder: ${error.message}`);
+    }
+
+    return { folder: data };
+  } catch (dbError: any) {
+    // Handle database constraint violations specifically
+    if (dbError.message?.includes('already exists') || dbError.message?.includes('unique') || dbError.message?.includes('duplicate')) {
+      throw new Error(`A folder named "${name}" already exists. Please choose a different name.`);
+    }
+    throw dbError;
   }
+}
 
-  const { data, error } = await supabase
-    .from("folders")
-    .insert({ name, description, tenant_id: tenantId, created_by: userId })
-    .select("id, name, description")
-    .single();
+async function toolListFolders(req: Request, args: any) {
+  const { supabase, tenantId } = await getUserAndTenant(req);
+  
+  try {
+    // Get folders with asset counts
+    const { data: folders, error } = await supabase
+      .from("folders")
+      .select(`
+        id, 
+        name, 
+        description, 
+        created_at, 
+        created_by,
+        assets(count)
+      `)
+      .eq("tenant_id", tenantId)
+      .order("created_at", { ascending: false });
 
-  if (error) throw new Error(error.message);
-  return { folder: data };
+    if (error) throw new Error(`Failed to fetch folders: ${error.message}`);
+
+    if (!folders || folders.length === 0) {
+      return {
+        message: "No folders found. You can create your first folder by saying 'Create folder called [FolderName]'.",
+        folders: [],
+        total_count: 0
+      };
+    }
+
+    // Format folders with better information
+    const formattedFolders = folders.map((folder: any) => ({
+      id: folder.id,
+      name: folder.name,
+      description: folder.description || "No description",
+      asset_count: folder.assets?.[0]?.count || 0,
+      created_at: new Date(folder.created_at).toLocaleDateString(),
+      created_recently: new Date(folder.created_at) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+    }));
+
+    // Create a nice summary message
+    const totalFolders = formattedFolders.length;
+    const totalAssets = formattedFolders.reduce((sum, folder) => sum + folder.asset_count, 0);
+    const recentFolders = formattedFolders.filter(f => f.created_recently).length;
+
+    let message = `📁 Found ${totalFolders} folder${totalFolders !== 1 ? 's' : ''} containing ${totalAssets} asset${totalAssets !== 1 ? 's' : ''} total.`;
+    
+    if (recentFolders > 0) {
+      message += ` ${recentFolders} folder${recentFolders !== 1 ? 's' : ''} created recently.`;
+    }
+
+    return { 
+      message,
+      folders: formattedFolders,
+      total_count: totalFolders,
+      total_assets: totalAssets
+    };
+  } catch (dbError: any) {
+    throw new Error(`Failed to list folders: ${dbError.message}`);
+  }
 }
 
 // Generate embeddings for an asset using vision model
@@ -316,6 +384,66 @@ async function toolUploadSelectedAsset(req: Request, args: any) {
   return { asset: inserted };
 }
 
+async function toolListAssets(req: Request, args: any) {
+  const { supabase, tenantId } = await getUserAndTenant(req);
+  const limit = args?.limit ? Math.min(Math.max(Number(args.limit), 1), 100) : 20;
+  const folderId = args?.folder_id || null;
+  const folderName = args?.folder_name || null;
+
+  try {
+    let query = supabase
+      .from("assets")
+      .select(`
+        id, 
+        name, 
+        description, 
+        file_type, 
+        file_size, 
+        tags, 
+        created_at,
+        folder_id,
+        folders!inner(id, name, tenant_id)
+      `)
+      .eq("folders.tenant_id", tenantId)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+
+    // Filter by specific folder if requested
+    if (folderId) {
+      query = query.eq("folder_id", folderId);
+    } else if (folderName) {
+      query = query.eq("folders.name", folderName);
+    }
+
+    const { data: assets, error } = await query;
+
+    if (error) throw new Error(`Failed to fetch assets: ${error.message}`);
+
+    const formattedAssets = (assets || []).map((asset: any) => ({
+      id: asset.id,
+      name: asset.name,
+      description: asset.description || "No description",
+      file_type: asset.file_type,
+      file_size: asset.file_size,
+      file_size_mb: (asset.file_size / (1024 * 1024)).toFixed(2),
+      tags: asset.tags || [],
+      created_at: asset.created_at,
+      folder: {
+        id: asset.folders.id,
+        name: asset.folders.name
+      }
+    }));
+
+    return { 
+      assets: formattedAssets,
+      total_count: formattedAssets.length,
+      showing_limit: limit
+    };
+  } catch (dbError: any) {
+    throw new Error(`Failed to list assets: ${dbError.message}`);
+  }
+}
+
 async function toolSearchAssets(req: Request, args: any) {
   const { supabase, tenantId } = await getUserAndTenant(req);
   const query = String(args?.query || "").trim();
@@ -462,6 +590,18 @@ const tools = [
   {
     type: "function",
     function: {
+      name: "list_folders",
+      description: "List and view all folders in the current user's tenant. Use this when user asks to see, list, view, or show all folders.",
+      parameters: {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "upload_asset_from_url",
       description: "Upload an asset into a folder from a public URL",
       parameters: {
@@ -495,6 +635,22 @@ const tools = [
           tags: { type: "array", items: { type: "string" }, description: "Extract any relevant tags from user message or file context" },
         },
         required: ["temp_file_path"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_assets",
+      description: "List and view all assets or assets in a specific folder. Use this when user asks to see, list, view, show all assets or assets in a folder.",
+      parameters: {
+        type: "object",
+        properties: {
+          folder_id: { type: "string", description: "Optional: Filter assets by folder ID" },
+          folder_name: { type: "string", description: "Optional: Filter assets by folder name" },
+          limit: { type: "number", description: "Maximum number of results to return (1-100, default: 20)" },
+        },
         additionalProperties: false,
       },
     },
@@ -544,8 +700,10 @@ serve(async (req) => {
     const uploadedFile: any = body.uploaded_file;
 
     let systemPrompt = `You are a DAM (Digital Asset Management) assistant. Keep answers concise. 
-You can use tools to perform actions like creating folders, uploading assets from URLs or processing user-uploaded files, and searching for assets.
+You can use tools to perform actions like creating folders, listing/viewing all folders, listing/viewing all assets, uploading assets from URLs or processing user-uploaded files, and searching for assets.
 When users ask to find, search, or look for assets, use the search_assets tool with their query.
+When users ask to see, list, view, show, or get all folders, use the list_folders tool - this provides detailed folder information including asset counts.
+When users ask to see, list, view, show, or get all assets or files, use the list_assets tool.
 If semantic search returns no results for images, automatically use backfill_embeddings to generate embeddings first, then search again.
 Only call tools when the user clearly asks to perform an action.`;
 
@@ -656,6 +814,10 @@ When calling upload_selected_asset, use temp_file_path: "${uploadedFile.path}" a
           try {
             if (fnName === "create_folder") {
               toolResult = await toolCreateFolder(req, args);
+            } else if (fnName === "list_folders") {
+              toolResult = await toolListFolders(req, args);
+            } else if (fnName === "list_assets") {
+              toolResult = await toolListAssets(req, args);
             } else if (fnName === "upload_asset_from_url") {
               toolResult = await toolUploadAssetFromUrl(req, args);
             } else if (fnName === "upload_selected_asset") {
@@ -667,33 +829,32 @@ When calling upload_selected_asset, use temp_file_path: "${uploadedFile.path}" a
             } else {
               toolResult = { error: `Unknown tool: ${fnName}` };
             }
-          } catch (e) {
-            toolResult = { error: e instanceof Error ? e.message : "Tool execution failed" };
+          } catch (toolErr: any) {
+            toolResult = { error: `Tool execution failed: ${toolErr.message}` };
           }
 
           history.push({
             role: "tool",
-            content: JSON.stringify(toolResult),
             tool_call_id: tc.id,
             name: fnName,
-          });
+            content: JSON.stringify(toolResult),
+          } as ChatMessage);
         }
 
-        aiData = await callAI(history);
-        if (aiData instanceof Response) return aiData; // error response
         round++;
-        continue;
+        aiData = await callAI(history);
+        if (aiData instanceof Response) return aiData;
+      } else {
+        // No tool calls, we're done
+        break;
       }
-
-      // No tool calls, finalize
-      const assistantMessage = msg?.content || "";
-      return new Response(JSON.stringify({ response: assistantMessage }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
     }
 
-    // Fallback in case of too many rounds
-    return new Response(JSON.stringify({ response: "Completed action." }), {
+    // Final response
+    const finalChoice = aiData.choices?.[0];
+    const finalMessage = finalChoice?.message?.content || "Completed action.";
+
+    return new Response(JSON.stringify({ response: finalMessage }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {

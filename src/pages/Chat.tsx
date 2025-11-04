@@ -54,6 +54,135 @@ const Chat = () => {
     scrollToBottom();
   }, [messages]);
 
+  // Function to extract folder name from user message
+  const extractFolderNameFromMessage = (message: string): string | null => {
+    const folderPatterns = [
+      // Patterns with quotes
+      /create.*folder.*called\s+['""]([^'""]+)['""]?/i,
+      /create.*folder.*named\s+['""]([^'""]+)['""]?/i,
+      /make.*folder.*called\s+['""]([^'""]+)['""]?/i,
+      /make.*folder.*named\s+['""]([^'""]+)['""]?/i,
+      /add.*folder\s+['""]([^'""]+)['""]?/i,
+      /new.*folder.*called\s+['""]([^'""]+)['""]?/i,
+      /new.*folder.*named\s+['""]([^'""]+)['""]?/i,
+      /folder.*called\s+['""]([^'""]+)['""]?/i,
+      /folder.*named\s+['""]([^'""]+)['""]?/i,
+      
+      // NEW: Patterns for "name as" and "name called"
+      /create.*folder.*name\s+as\s+([A-Za-z0-9_\-\s]+?)(?:\s|$|\.|\?|!)/i,
+      /create.*folder.*name\s+called\s+([A-Za-z0-9_\-\s]+?)(?:\s|$|\.|\?|!)/i,
+      /make.*folder.*name\s+as\s+([A-Za-z0-9_\-\s]+?)(?:\s|$|\.|\?|!)/i,
+      /make.*folder.*name\s+called\s+([A-Za-z0-9_\-\s]+?)(?:\s|$|\.|\?|!)/i,
+      
+      // Patterns without quotes - more specific
+      /create.*folder\s+called\s+([A-Za-z0-9_\-\s]+?)(?:\s|$)/i,
+      /create.*folder\s+named\s+([A-Za-z0-9_\-\s]+?)(?:\s|$)/i,
+      /make.*folder\s+called\s+([A-Za-z0-9_\-\s]+?)(?:\s|$)/i,
+      /make.*folder\s+named\s+([A-Za-z0-9_\-\s]+?)(?:\s|$)/i,
+      /new.*folder\s+called\s+([A-Za-z0-9_\-\s]+?)(?:\s|$)/i,
+      /new.*folder\s+named\s+([A-Za-z0-9_\-\s]+?)(?:\s|$)/i,
+      
+      // Simple patterns
+      /create.*folder\s+([A-Za-z0-9_\-\s]+?)(?:\.|!|\?|$)/i,
+      /make.*folder\s+([A-Za-z0-9_\-\s]+?)(?:\.|!|\?|$)/i,
+      /new.*folder\s+([A-Za-z0-9_\-\s]+?)(?:\.|!|\?|$)/i,
+      /add.*folder\s+([A-Za-z0-9_\-\s]+?)(?:\.|!|\?|$)/i,
+    ];
+
+    for (const pattern of folderPatterns) {
+      const match = message.match(pattern);
+      if (match && match[1]) {
+        const folderName = match[1].trim();
+        // Remove common trailing words
+        const cleanName = folderName.replace(/\s+(please|now|for me|today)$/i, '').trim();
+        if (cleanName.length > 0) {
+          return cleanName;
+        }
+      }
+    }
+    return null;
+  };
+
+  // Function to check if message is a folder creation request
+  const isFolderCreationRequest = (message: string): boolean => {
+    const folderKeywords = [
+      /create.*folder/i,
+      /make.*folder/i,
+      /add.*folder/i,
+      /new.*folder/i,
+      /folder.*name/i,  // Added to catch "folder name as X"
+    ];
+    
+    return folderKeywords.some(pattern => pattern.test(message));
+  };
+
+  // Function to validate folder name against existing folders
+  const validateFolderName = async (folderName: string): Promise<{ isValid: boolean; error?: string }> => {
+    try {
+      console.log("🔍 Validating folder name:", folderName);
+      
+      // Basic validation first
+      if (!folderName || !folderName.trim()) {
+        return { isValid: false, error: "Folder name cannot be empty." };
+      }
+
+      const trimmedName = folderName.trim();
+      
+      if (trimmedName.length > 100) {
+        return { isValid: false, error: "Folder name is too long (max 100 characters)." };
+      }
+
+      if (trimmedName.length < 1) {
+        return { isValid: false, error: "Folder name cannot be empty." };
+      }
+
+      // Get user's tenant_id
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.log("❌ User not authenticated");
+        return { isValid: false, error: "Not authenticated" };
+      }
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("tenant_id")
+        .eq("id", user.id)
+        .single();
+
+      if (!profile?.tenant_id) {
+        console.log("❌ Tenant not found for user");
+        return { isValid: false, error: "Tenant not found" };
+      }
+
+      console.log("🏢 Checking for existing folders in tenant:", profile.tenant_id);
+
+      // Check for existing folders with the same name (case-insensitive)
+      const { data: existingFolders, error: checkError } = await supabase
+        .from("folders")
+        .select("name, id")
+        .eq("tenant_id", profile.tenant_id)
+        .ilike("name", trimmedName);
+
+      if (checkError) {
+        console.error("❌ Database error checking folders:", checkError);
+        return { isValid: false, error: `Failed to check existing folders: ${checkError.message}` };
+      }
+
+      console.log("📊 Existing folders found:", existingFolders);
+
+      if (existingFolders && existingFolders.length > 0) {
+        console.log("❌ Duplicate folder detected:", existingFolders[0]);
+        return { isValid: false, error: `Folder "${trimmedName}" already exists. Please choose a different name.` };
+      }
+
+      console.log("✅ No duplicate folders found, validation passed");
+      return { isValid: true };
+    } catch (error: any) {
+      console.error("❌ Validation error:", error);
+      return { isValid: false, error: `Validation failed: ${error.message}` };
+    }
+  };
+
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -140,8 +269,54 @@ const Chat = () => {
         ? `${userMessage}\n[Attached: ${fileInfo.name}]`
         : userMessage;
 
-      // Add user message to chat
+      // Add user message to chat first
       addMessage({ role: "user", content: displayMessage });
+
+      // Check if this is a folder creation request and validate it
+      if (isFolderCreationRequest(userMessage)) {
+        console.log("🔍 Folder creation request detected:", userMessage);
+        const folderName = extractFolderNameFromMessage(userMessage);
+        
+        if (folderName) {
+          console.log("📁 Extracted folder name:", folderName);
+          
+          const validation = await validateFolderName(folderName);
+          
+          if (!validation.isValid) {
+            console.log("❌ Folder validation failed:", validation.error);
+            const errorMessage = `❌ ${validation.error}`;
+            addMessage({ role: "assistant", content: errorMessage });
+            
+            // Show toast notification for duplicate folder
+            toast({
+              title: "❌ Folder Creation Failed",
+              description: validation.error,
+              variant: "destructive",
+            });
+            
+            setIsLoading(false);
+            return;
+          }
+          
+          console.log("✅ Folder validation passed, proceeding with creation for:", folderName);
+        } else {
+          console.log("⚠️ Could not extract folder name from message:", userMessage);
+          // Check if this might be a folder creation but we couldn't parse it
+          if (userMessage.toLowerCase().includes('folder')) {
+            const errorMessage = "❌ I couldn't understand the folder name. Please use format like 'Create folder called MyFolder'";
+            addMessage({ role: "assistant", content: errorMessage });
+            
+            toast({
+              title: "❌ Invalid Folder Request",
+              description: "Please specify folder name clearly like 'Create folder called MyFolder'",
+              variant: "destructive",
+            });
+            
+            setIsLoading(false);
+            return;
+          }
+        }
+      }
 
       const requestBody: any = {
         message: userMessage,
@@ -176,6 +351,26 @@ const Chat = () => {
 
       let responseContent = data?.response || "Sorry, I couldn't process that request.";
       
+      // Check if this was a successful folder creation
+      const wasAttemptingFolderCreation = isFolderCreationRequest(userMessage);
+      const folderName = wasAttemptingFolderCreation ? extractFolderNameFromMessage(userMessage) : null;
+      
+      if (wasAttemptingFolderCreation && folderName && responseContent.toLowerCase().includes("successfully")) {
+        // Show success toast for folder creation
+        toast({
+          title: "✅ Folder Created Successfully",
+          description: `Folder "${folderName}" has been created successfully!`,
+          variant: "default",
+        });
+      } else if (responseContent.toLowerCase().includes("successfully") || responseContent.toLowerCase().includes("completed")) {
+        // Show general success toast for other successful operations
+        toast({
+          title: "✅ Success",
+          description: "Operation completed successfully!",
+          variant: "default",
+        });
+      }
+      
       const finalResponse = fileInfo && !responseContent.toLowerCase().includes("file") && !responseContent.toLowerCase().includes("upload")
         ? `${responseContent}\n\n💡 I notice you attached "${fileInfo.name}". What would you like me to do with this file?`
         : responseContent;
@@ -194,18 +389,35 @@ const Chat = () => {
       console.error("Chat assistant error:", error);
       
       let errorMessage = "Failed to send message. Please try again.";
+      let toastTitle = "❌ Error";
+      let toastDescription = "Failed to send message. Please try again.";
       
       if (error.message?.includes("duplicate") || error.message?.includes("already exists")) {
         errorMessage = "❌ That folder name already exists. Please try a different name.";
+        toastTitle = "❌ Duplicate Folder";
+        toastDescription = "A folder with this name already exists. Please choose a different name.";
       } else if (error.message?.includes("network") || error.message?.includes("fetch")) {
         errorMessage = "❌ Network error. Please check your connection and try again.";
+        toastTitle = "❌ Network Error";
+        toastDescription = "Please check your internet connection and try again.";
       } else if (error.message?.includes("auth")) {
         errorMessage = "❌ Authentication error. Please refresh the page and try again.";
+        toastTitle = "❌ Authentication Error";
+        toastDescription = "Please refresh the page and login again.";
+      } else if (error.message?.includes("permission")) {
+        errorMessage = "❌ Permission denied. You don't have access to perform this action.";
+        toastTitle = "❌ Permission Denied";
+        toastDescription = "You don't have permission to perform this action.";
+      } else if (error.message?.includes("timeout")) {
+        errorMessage = "❌ Request timeout. Please try again.";
+        toastTitle = "❌ Request Timeout";
+        toastDescription = "The request took too long. Please try again.";
       }
       
+      // Show error toast
       toast({
-        title: "Error",
-        description: errorMessage,
+        title: toastTitle,
+        description: toastDescription,
         variant: "destructive",
       });
       
