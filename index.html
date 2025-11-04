@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en" class="jato-theme">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AIVA - Digital Asset Management</title>
+    <meta name="description" content="AIVA - Professional Digital Asset Management platform for organizing and managing your digital files" />
+    <meta name="author" content="AIVA Systems" />
+
+    <meta property="og:title" content="AIVA - Digital Asset Management" />
+    <meta property="og:description" content="AIVA - Professional Digital Asset Management platform" />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@aiva_systems" />
+    <meta name="twitter:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
+    
+    <script>
+      // Initialize AIVA theme before page loads to prevent flash
+      (function() {
+        const theme = localStorage.getItem('theme') || 'light';
+        const htmlEl = document.documentElement;
+        htmlEl.classList.add('jato-theme');
+        if (theme === 'dark') {
+          htmlEl.classList.add('dark', 'jato-dark');
+        }
+      })();
+    </script>
+  </head>
+
+  <body class="jato-body">
+    <div id="root" class="jato-root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,46 @@
+import { Toaster } from "@/components/ui/toaster";
+import { Toaster as Sonner } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import Auth from "./pages/Auth";
+import Dashboard from "./pages/Dashboard";
+import DashboardHome from "./pages/DashboardHome";
+import Assets from "./pages/Assets";
+import Folders from "./pages/Folders";
+import FolderDetail from "./pages/FolderDetail";
+import Upload from "./pages/Upload";
+import Analytics from "./pages/Analytics";
+import Chat from "./pages/Chat";
+import FakeBuster from "./pages/FakeBuster";
+import NotFound from "./pages/NotFound";
+
+const queryClient = new QueryClient();
+
+const App = () => (
+  <QueryClientProvider client={queryClient}>
+    <TooltipProvider>
+      <Toaster />
+      <Sonner />
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Navigate to="/auth" replace />} />
+          <Route path="/auth" element={<Auth />} />
+          <Route path="/dashboard" element={<Dashboard />}>
+            <Route index element={<DashboardHome />} />
+            <Route path="assets" element={<Assets />} />
+            <Route path="folders" element={<Folders />} />
+            <Route path="folders/:folderId" element={<FolderDetail />} />
+            <Route path="upload" element={<Upload />} />
+            <Route path="analytics" element={<Analytics />} />
+            <Route path="chat" element={<Chat />} />
+            <Route path="fakebuster" element={<FakeBuster />} />
+          </Route>
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </BrowserRouter>
+    </TooltipProvider>
+  </QueryClientProvider>
+);
+
+export default App;

@@ -1,0 +1,13 @@
+project_id = "qbcguopecthtijtfikmv"
+
+[functions.chat-assistant]
+verify_jwt = true
+
+[functions.generate-embedding]
+verify_jwt = true
+
+[functions.backfill-embeddings]
+verify_jwt = true
+
+[functions.verify-content]
+verify_jwt = true
