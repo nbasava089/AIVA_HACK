@@ -301,7 +301,7 @@ const ContentModeration = () => {
               {result.is_fake ? (
                 <Badge className="text-base px-4 py-2 bg-gradient-to-r from-red-500 to-orange-500 hover:from-red-600 hover:to-orange-600 text-white shadow-lg">
                   <AlertTriangle className="h-4 w-4 mr-2" />
-                  Potentially Fake
+                  Restricted Content
                 </Badge>
               ) : (
                 <Badge className="text-base px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white shadow-lg">

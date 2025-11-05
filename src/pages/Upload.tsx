@@ -271,7 +271,7 @@ const Upload = () => {
                     ) : verificationResult.is_fake ? (
                       <Badge variant="destructive" className="flex items-center gap-1">
                         <AlertTriangle className="h-3 w-3" />
-                        Potentially Fake
+                        Restricted Content
                       </Badge>
                     ) : (
                       <Badge className="bg-green-600 flex items-center gap-1">
