@@ -57,7 +57,7 @@ const Chat = () => {
   // Function to extract folder name from user message
   const extractFolderNameFromMessage = (message: string): string | null => {
     const folderPatterns = [
-      // Patterns with quotes
+      // Patterns with quotes - specific folder names
       /create.*folder.*called\s+['""]([^'""]+)['""]?/i,
       /create.*folder.*named\s+['""]([^'""]+)['""]?/i,
       /make.*folder.*called\s+['""]([^'""]+)['""]?/i,
@@ -68,7 +68,7 @@ const Chat = () => {
       /folder.*called\s+['""]([^'""]+)['""]?/i,
       /folder.*named\s+['""]([^'""]+)['""]?/i,
       
-      // NEW: Patterns for "name as" and "name called"
+      // Patterns for "name as" and "name called"
       /create.*folder.*name\s+as\s+([A-Za-z0-9_\-\s]+?)(?:\s|$|\.|\?|!)/i,
       /create.*folder.*name\s+called\s+([A-Za-z0-9_\-\s]+?)(?:\s|$|\.|\?|!)/i,
       /make.*folder.*name\s+as\s+([A-Za-z0-9_\-\s]+?)(?:\s|$|\.|\?|!)/i,
@@ -82,24 +82,26 @@ const Chat = () => {
       /new.*folder\s+called\s+([A-Za-z0-9_\-\s]+?)(?:\s|$)/i,
       /new.*folder\s+named\s+([A-Za-z0-9_\-\s]+?)(?:\s|$)/i,
       
-      // Simple patterns
-      /create.*folder\s+([A-Za-z0-9_\-\s]+?)(?:\.|!|\?|$)/i,
-      /make.*folder\s+([A-Za-z0-9_\-\s]+?)(?:\.|!|\?|$)/i,
-      /new.*folder\s+([A-Za-z0-9_\-\s]+?)(?:\.|!|\?|$)/i,
-      /add.*folder\s+([A-Za-z0-9_\-\s]+?)(?:\.|!|\?|$)/i,
+      // Simple patterns for explicit folder names
+      /create.*folder\s+([A-Za-z0-9_\-\s]{2,})(?:\.|!|\?|$)/i,
+      /make.*folder\s+([A-Za-z0-9_\-\s]{2,})(?:\.|!|\?|$)/i,
+      /new.*folder\s+([A-Za-z0-9_\-\s]{2,})(?:\.|!|\?|$)/i,
+      /add.*folder\s+([A-Za-z0-9_\-\s]{2,})(?:\.|!|\?|$)/i,
     ];
 
     for (const pattern of folderPatterns) {
       const match = message.match(pattern);
       if (match && match[1]) {
         const folderName = match[1].trim();
-        // Remove common trailing words
+        // Remove common trailing words and validate
         const cleanName = folderName.replace(/\s+(please|now|for me|today)$/i, '').trim();
-        if (cleanName.length > 0) {
+        if (cleanName.length > 1 && !cleanName.match(/^(a|an|the|new)$/i)) {
           return cleanName;
         }
       }
     }
+    
+    // Return null if no specific folder name found - let AI handle it
     return null;
   };
 
@@ -278,7 +280,7 @@ const Chat = () => {
         const folderName = extractFolderNameFromMessage(userMessage);
         
         if (folderName) {
-          console.log("📁 Extracted folder name:", folderName);
+          console.log("📁 Extracted folder name for validation:", folderName);
           
           const validation = await validateFolderName(folderName);
           
@@ -300,21 +302,9 @@ const Chat = () => {
           
           console.log("✅ Folder validation passed, proceeding with creation for:", folderName);
         } else {
-          console.log("⚠️ Could not extract folder name from message:", userMessage);
-          // Check if this might be a folder creation but we couldn't parse it
-          if (userMessage.toLowerCase().includes('folder')) {
-            const errorMessage = "❌ I couldn't understand the folder name. Please use format like 'Create folder called MyFolder'";
-            addMessage({ role: "assistant", content: errorMessage });
-            
-            toast({
-              title: "❌ Invalid Folder Request",
-              description: "Please specify folder name clearly like 'Create folder called MyFolder'",
-              variant: "destructive",
-            });
-            
-            setIsLoading(false);
-            return;
-          }
+          console.log("⚠️ No specific folder name extracted, letting AI handle natural language request:", userMessage);
+          // Let the AI handle natural language requests like "Create a folder" or "Create a new folder"
+          // Don't validate - let the backend AI parse and handle the request
         }
       }
 

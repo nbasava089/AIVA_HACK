@@ -1,8 +1,22 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { BarChart3, Download, Eye, Upload as UploadIcon, TrendingUp } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
+import { BarChart3, Download, Eye, Upload as UploadIcon, TrendingUp, PieChart } from "lucide-react";
+import { 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer, 
+  LineChart, 
+  Line,
+  PieChart as RechartsPieChart,
+  Cell,
+  Pie,
+  Legend
+} from "recharts";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
@@ -13,6 +27,9 @@ interface AnalyticsData {
   topAssets: Array<{ name: string; count: number; asset_id: string }>;
   trend: number;
   dailyStats: Array<{ date: string; views: number; downloads: number; uploads: number }>;
+  fileTypeDistribution: Array<{ name: string; value: number; color: string }>;
+  folderDistribution: Array<{ name: string; value: number; color: string }>;
+  activityDistribution: Array<{ name: string; value: number; color: string }>;
 }
 
 const Analytics = () => {
@@ -23,6 +40,9 @@ const Analytics = () => {
     topAssets: [],
     trend: 0,
     dailyStats: [],
+    fileTypeDistribution: [],
+    folderDistribution: [],
+    activityDistribution: [],
   });
   const [loading, setLoading] = useState(true);
 
@@ -135,6 +155,74 @@ const Analytics = () => {
           });
         }
 
+        // Prepare pie chart data
+        
+        // 1. Activity Distribution
+        const activityDistribution = [
+          { name: 'Views', value: views.count || 0, color: '#3B82F6' },
+          { name: 'Downloads', value: downloads.count || 0, color: '#10B981' },
+          { name: 'Uploads', value: uploads.count || 0, color: '#F59E0B' },
+        ].filter(item => item.value > 0);
+
+        // 2. File Type Distribution (get from assets)
+        const { data: allAssets } = await supabase
+          .from("assets")
+          .select(`
+            file_type,
+            folders!inner(tenant_id)
+          `)
+          .eq("folders.tenant_id", profile.tenant_id);
+
+        const fileTypeCounts: Record<string, number> = {};
+        for (const asset of allAssets || []) {
+          const type = asset.file_type?.split('/')[0] || 'other';
+          fileTypeCounts[type] = (fileTypeCounts[type] || 0) + 1;
+        }
+
+        const colors = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4'];
+        const fileTypeDistribution = Object.entries(fileTypeCounts)
+          .map(([type, count], index) => ({
+            name: type.charAt(0).toUpperCase() + type.slice(1),
+            value: count,
+            color: colors[index % colors.length],
+          }))
+          .filter(item => item.value > 0);
+
+        // 3. Folder Distribution (get assets per folder)
+        const { data: allFolders } = await supabase
+          .from("folders")
+          .select("id, name")
+          .eq("tenant_id", profile.tenant_id);
+
+        const { data: assetsByFolder } = await supabase
+          .from("assets")
+          .select("folder_id")
+          .not("folder_id", "is", null);
+
+        const folderCounts: Record<string, { name: string; count: number }> = {};
+        
+        // Initialize all folders
+        for (const folder of allFolders || []) {
+          folderCounts[folder.id] = { name: folder.name, count: 0 };
+        }
+        
+        // Count assets per folder
+        for (const asset of assetsByFolder || []) {
+          if (asset.folder_id && folderCounts[asset.folder_id]) {
+            folderCounts[asset.folder_id].count++;
+          }
+        }
+
+        const folderDistribution = Object.entries(folderCounts)
+          .map(([id, data], index) => ({
+            name: data.name,
+            value: data.count,
+            color: colors[index % colors.length],
+          }))
+          .filter(item => item.value > 0)
+          .sort((a, b) => b.value - a.value)
+          .slice(0, 8); // Limit to top 8 folders
+
         setAnalytics({
           totalViews: views.count || 0,
           totalDownloads: downloads.count || 0,
@@ -142,6 +230,9 @@ const Analytics = () => {
           topAssets: topAssetsData,
           trend,
           dailyStats,
+          fileTypeDistribution,
+          folderDistribution,
+          activityDistribution,
         });
       }
       setLoading(false);
@@ -243,6 +334,120 @@ const Analytics = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Pie Charts Row */}
+      <div className="grid gap-4 md:grid-cols-3">
+        {/* Activity Distribution Pie Chart */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Activity Distribution</CardTitle>
+            <PieChart className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {analytics.activityDistribution.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground text-sm">
+                No activity data available yet
+              </div>
+            ) : (
+              <div className="h-[200px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RechartsPieChart>
+                    <Pie
+                      data={analytics.activityDistribution}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={30}
+                      outerRadius={70}
+                      paddingAngle={2}
+                      dataKey="value"
+                    >
+                      {analytics.activityDistribution.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                    <Legend />
+                  </RechartsPieChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* File Type Distribution Pie Chart */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">File Types</CardTitle>
+            <PieChart className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {analytics.fileTypeDistribution.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground text-sm">
+                No files uploaded yet
+              </div>
+            ) : (
+              <div className="h-[200px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RechartsPieChart>
+                    <Pie
+                      data={analytics.fileTypeDistribution}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={30}
+                      outerRadius={70}
+                      paddingAngle={2}
+                      dataKey="value"
+                    >
+                      {analytics.fileTypeDistribution.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                    <Legend />
+                  </RechartsPieChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Folder Distribution Pie Chart */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Assets by Folder</CardTitle>
+            <PieChart className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {analytics.folderDistribution.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground text-sm">
+                No folders with assets yet
+              </div>
+            ) : (
+              <div className="h-[200px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RechartsPieChart>
+                    <Pie
+                      data={analytics.folderDistribution}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={30}
+                      outerRadius={70}
+                      paddingAngle={2}
+                      dataKey="value"
+                    >
+                      {analytics.folderDistribution.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                    <Legend />
+                  </RechartsPieChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <Card>
         <CardHeader>

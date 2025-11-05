@@ -32,7 +32,7 @@ const menuItems = [
   { title: "Upload", url: "/dashboard/upload", icon: Upload },
   { title: "Analytics", url: "/dashboard/analytics", icon: BarChart3 },
   { title: "AIVA Assistant", url: "/dashboard/chat", icon: MessageSquare },
-  { title: "FakeBuster", url: "/dashboard/fakebuster", icon: ShieldCheck },
+  { title: "Content Moderation", url: "/dashboard/content-moderation", icon: ShieldCheck },
 ];
 
 interface AppSidebarProps {

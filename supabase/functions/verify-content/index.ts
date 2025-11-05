@@ -61,7 +61,7 @@ serve(async (req) => {
     const messages: any[] = [
       {
         role: 'system',
-        content: `You are FakeBuster, an AI content safety and truth verification expert. Analyze content for:
+        content: `You are Content Moderation AI, an AI content safety and truth verification expert. Analyze content for:
 
 CRITICAL - Content Restrictions (highest priority):
 1. Violence, blood, gore, or graphic injuries
@@ -71,7 +71,7 @@ CRITICAL - Content Restrictions (highest priority):
 5. Any content that could incite violence or harm
 
 Additional Analysis:
-6. Deepfake/AI-generated detection
+6. Content Moderation/AI-generated detection
 7. Misinformation indicators
 8. Source credibility (for URLs/text)
 9. Metadata inconsistencies
@@ -93,7 +93,7 @@ Be thorough and prioritize safety. Flag ANY potentially harmful content.`
         content: [
           {
             type: 'text',
-            text: 'Analyze this image for authenticity, deepfakes, violence, protests, and misinformation.'
+            text: 'Analyze this image for authenticity, Content Moderation, violence, protests, and misinformation.'
           },
           {
             type: 'image_url',

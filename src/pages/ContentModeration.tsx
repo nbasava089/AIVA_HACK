@@ -22,7 +22,7 @@ interface VerificationResult {
   created_at: string;
 }
 
-const FakeBuster = () => {
+const ContentModeration = () => {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<VerificationResult | null>(null);
   const [imageUrl, setImageUrl] = useState("");
@@ -95,14 +95,14 @@ const FakeBuster = () => {
               <ShieldAlert className="h-6 w-6 text-white" />
             </div>
             <h1 className="text-5xl font-bold bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 bg-clip-text text-transparent">
-              FakeBuster
+              Content Moderation
             </h1>
           </div>
           <p className="text-gray-600 text-lg leading-relaxed max-w-2xl">
-            Advanced AI-powered verification system for detecting deepfakes, misinformation, and manipulated content across images, text, and URLs.
+            Advanced AI-powered verification system for detecting restricted content, misinformation, and manipulated content across images, text, and URLs.
           </p>
           <div className="flex flex-wrap gap-2 mt-4">
-            <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-200">Deepfake Detection</Badge>
+            <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-200">Content Moderation</Badge>
             <Badge className="bg-purple-100 text-purple-700 hover:bg-purple-200">Content Analysis</Badge>
             <Badge className="bg-indigo-100 text-indigo-700 hover:bg-indigo-200">Real-time Verification</Badge>
           </div>
@@ -124,10 +124,10 @@ const FakeBuster = () => {
                 <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-md">
                   <Upload className="h-5 w-5 text-white" />
                 </div>
-                Image Deepfake Detection
+                Content Moderation
               </CardTitle>
               <CardDescription className="text-base text-gray-600 leading-relaxed">
-                Upload an image to detect deepfakes, AI-generated content, violence, or protests using advanced computer vision algorithms
+                Upload an image to detect content moderation, AI-generated content, violence, or protests using advanced computer vision algorithms
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -430,4 +430,4 @@ const FakeBuster = () => {
   );
 };
 
-export default FakeBuster;
+export default ContentModeration;

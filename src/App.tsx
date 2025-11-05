@@ -12,7 +12,7 @@ import FolderDetail from "./pages/FolderDetail";
 import Upload from "./pages/Upload";
 import Analytics from "./pages/Analytics";
 import Chat from "./pages/Chat";
-import FakeBuster from "./pages/FakeBuster";
+import ContentModeration from "./pages/ContentModeration";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -34,7 +34,7 @@ const App = () => (
             <Route path="upload" element={<Upload />} />
             <Route path="analytics" element={<Analytics />} />
             <Route path="chat" element={<Chat />} />
-            <Route path="fakebuster" element={<FakeBuster />} />
+            <Route path="content-moderation" element={<ContentModeration />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>

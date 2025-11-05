@@ -575,11 +575,11 @@ const tools = [
     type: "function",
     function: {
       name: "create_folder",
-      description: "Create a new folder in the current user's tenant",
+      description: "Create a new folder in the current user's tenant. Use this when user requests to create, make, add, or set up a folder. If user says 'create a folder' without specifying a name, ask them what they'd like to call it or suggest a name based on context.",
       parameters: {
         type: "object",
         properties: {
-          name: { type: "string", description: "Folder name" },
+          name: { type: "string", description: "Folder name - extract from user message or ask for clarification if not provided" },
           description: { type: "string", description: "Optional description" },
         },
         required: ["name"],
@@ -699,13 +699,23 @@ serve(async (req) => {
     const singleMessage: string | undefined = body.message;
     const uploadedFile: any = body.uploaded_file;
 
-    let systemPrompt = `You are a DAM (Digital Asset Management) assistant. Keep answers concise. 
+    let systemPrompt = `You are a DAM (Digital Asset Management) assistant. Keep answers concise and helpful. 
 You can use tools to perform actions like creating folders, listing/viewing all folders, listing/viewing all assets, uploading assets from URLs or processing user-uploaded files, and searching for assets.
-When users ask to find, search, or look for assets, use the search_assets tool with their query.
-When users ask to see, list, view, show, or get all folders, use the list_folders tool - this provides detailed folder information including asset counts.
-When users ask to see, list, view, show, or get all assets or files, use the list_assets tool.
-If semantic search returns no results for images, automatically use backfill_embeddings to generate embeddings first, then search again.
-Only call tools when the user clearly asks to perform an action.`;
+
+FOLDER CREATION HANDLING:
+- When users say "create a folder" or "create a new folder" without specifying a name, politely ask what they'd like to call it
+- Suggest logical folder names based on context (e.g., "Documents", "Images", "Projects")
+- For requests like "make a marketing folder" or "create project folder", extract "marketing" or "project" as the folder name
+- Always be helpful and guide users to successful folder creation
+
+TOOL USAGE:
+- When users ask to find, search, or look for assets, use the search_assets tool with their query
+- When users ask to see, list, view, show, or get all folders, use the list_folders tool - this provides detailed folder information including asset counts
+- When users ask to see, list, view, show, or get all assets or files, use the list_assets tool
+- If semantic search returns no results for images, automatically use backfill_embeddings to generate embeddings first, then search again
+- Only call tools when the user clearly asks to perform an action
+
+Be conversational and helpful while being efficient with your responses.`;
 
     // Debug logging for uploaded file
     console.log("Uploaded file info:", uploadedFile);
