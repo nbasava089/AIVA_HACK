@@ -6,8 +6,6 @@
 
 ## Project info
 
-**URL**: https://lovable.dev/projects/f39af245-541e-4064-b040-2f59c2197f85
-
 ## Features
 
 - 🤖 **AI-Powered Asset Management** - Intelligent organizing and managing of digital files
@@ -20,17 +18,9 @@
 
 ## How can I edit this code?
 
-There are several ways of editing your application.
-
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/f39af245-541e-4064-b040-2f59c2197f85) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
 **Use your preferred IDE**
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+You can work locally using your preferred IDE by cloning this repo and pushing changes.
 
 The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
 
@@ -74,14 +64,21 @@ This project is built with:
 - shadcn-ui
 - Tailwind CSS
 
-## How can I deploy this project?
 
-Simply open [Lovable](https://lovable.dev/projects/f39af245-541e-4064-b040-2f59c2197f85) and click on Share -> Publish.
 
-## Can I connect a custom domain to my Lovable project?
+## How can I deploy this to the web?
 
-Yes, you can!
+You can deploy this project to various platforms:
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+1. **Vercel**: Connect your GitHub repo to Vercel for automatic deployments
+2. **Netlify**: Deploy directly from your Git repository  
+3. **Traditional hosting**: Build with `npm run build` and upload the `dist` folder
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+## Setting up Google API Integration
+
+1. Get your Google API key from [Google AI Studio](https://aistudio.google.com/)
+2. Set up environment variables in your hosting platform
+3. Deploy the Supabase functions with your Google API key
+4. Configure your frontend environment variables
+
+See `GOOGLE_API_CONFIGURATION.md` for detailed setup instructions.

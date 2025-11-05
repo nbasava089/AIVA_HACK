@@ -117,30 +117,37 @@ serve(async (req) => {
 });
 
 async function generateEmbedding(fileData: Blob, fileType: string): Promise<number[] | null> {
-  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-  if (!LOVABLE_API_KEY) return null;
+  const GOOGLE_API_KEY = Deno.env.get("GOOGLE_API_KEY");
+  if (!GOOGLE_API_KEY) return null;
 
   try {
     const buffer = await fileData.arrayBuffer();
     const base64 = b64encode(buffer);
-    const dataUrl = `data:${fileType};base64,${base64}`;
 
-    // Caption the image
-    const captionRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    // Caption the image using Google Gemini
+    const captionRes = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=" + GOOGLE_API_KEY, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: "Describe the image in one short sentence with key objects, scene, and style. Return only the sentence." },
-          { role: "user", content: [
-            { type: "text", text: "Please describe this image briefly." },
-            { type: "image_url", image_url: { url: dataUrl } }
-          ]}
-        ]
+        contents: [{
+          parts: [
+            { text: "Describe the image in one short sentence with key objects, scene, and style. Return only the sentence." },
+            { 
+              inline_data: {
+                mime_type: fileType,
+                data: base64
+              }
+            }
+          ]
+        }],
+        generationConfig: {
+          temperature: 0.4,
+          topK: 32,
+          topP: 1,
+          maxOutputTokens: 100,
+        }
       }),
     });
 
@@ -150,19 +157,20 @@ async function generateEmbedding(fileData: Blob, fileType: string): Promise<numb
     }
 
     const captionData = await captionRes.json();
-    const caption: string = captionData.choices?.[0]?.message?.content || "";
+    const caption: string = captionData.candidates?.[0]?.content?.parts?.[0]?.text || "";
     if (!caption) return null;
 
-    // Generate embedding from caption
-    const embRes = await fetch("https://ai.gateway.lovable.dev/v1/embeddings", {
+    // Generate embedding from caption using Google Text Embedding
+    const embRes = await fetch("https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=" + GOOGLE_API_KEY, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/text-embedding-004",
-        input: caption,
+        model: "models/text-embedding-004",
+        content: {
+          parts: [{ text: caption }]
+        }
       }),
     });
 
@@ -172,7 +180,7 @@ async function generateEmbedding(fileData: Blob, fileType: string): Promise<numb
     }
 
     const data = await embRes.json();
-    return data.data?.[0]?.embedding || null;
+    return data.embedding?.values || null;
   } catch (e) {
     console.error("Error generating embedding:", e);
     return null;

@@ -15,9 +15,9 @@ serve(async (req) => {
   try {
     const { contentType, contentUrl, contentText } = await req.json();
     
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY not configured');
+    const GOOGLE_API_KEY = Deno.env.get('GOOGLE_API_KEY');
+    if (!GOOGLE_API_KEY) {
+      throw new Error('GOOGLE_API_KEY not configured');
     }
 
     const authHeader = req.headers.get('Authorization');
@@ -87,71 +87,71 @@ Be thorough and prioritize safety. Flag ANY potentially harmful content.`
       }
     ];
 
-    if (contentType === 'image' && contentUrl) {
-      messages.push({
-        role: 'user',
-        content: [
-          {
-            type: 'text',
-            text: 'Analyze this image for authenticity, Content Moderation, violence, protests, and misinformation.'
+    let requestBody: any = {
+      contents: [],
+      generationConfig: {
+        temperature: 0.3,
+        topK: 32,
+        topP: 1,
+        maxOutputTokens: 2048,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: "object",
+          properties: {
+            is_fake: { type: "boolean" },
+            confidence_score: { type: "number" },
+            detected_issues: {
+              type: "array",
+              items: { type: "string" }
+            },
+            analysis_summary: { type: "string" },
+            recommendations: { type: "string" }
           },
-          {
-            type: 'image_url',
-            image_url: { url: contentUrl }
+          required: ["is_fake", "confidence_score", "detected_issues", "analysis_summary", "recommendations"]
+        }
+      }
+    };
+
+    if (contentType === 'image' && contentUrl) {
+      // Extract base64 data from data URL
+      const base64Data = contentUrl.split(',')[1];
+      const mimeType = contentUrl.split(';')[0].split(':')[1];
+      
+      requestBody.contents.push({
+        parts: [
+          { text: 'Analyze this image for authenticity, Content Moderation, violence, protests, and misinformation.' },
+          { 
+            inline_data: {
+              mime_type: mimeType,
+              data: base64Data
+            }
           }
         ]
       });
     } else if (contentType === 'text' || contentType === 'url') {
-      messages.push({
-        role: 'user',
-        content: `Analyze this ${contentType} for misinformation and credibility:\n\n${contentText}`
+      requestBody.contents.push({
+        parts: [{ text: `Analyze this ${contentType} for misinformation and credibility:\n\n${contentText}` }]
       });
     }
 
-    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    const aiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GOOGLE_API_KEY}`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-pro',
-        messages,
-        response_format: {
-          type: "json_schema",
-          json_schema: {
-            name: "verification_result",
-            strict: true,
-            schema: {
-              type: "object",
-              properties: {
-                is_fake: { type: "boolean" },
-                confidence_score: { type: "number" },
-                detected_issues: {
-                  type: "array",
-                  items: { type: "string" }
-                },
-                analysis_summary: { type: "string" },
-                recommendations: { type: "string" }
-              },
-              required: ["is_fake", "confidence_score", "detected_issues", "analysis_summary", "recommendations"],
-              additionalProperties: false
-            }
-          }
-        }
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     if (!aiResponse.ok) {
       const errorText = await aiResponse.text();
-      console.error('AI API error:', aiResponse.status, errorText);
-      throw new Error(`AI API error: ${aiResponse.status}`);
+      console.error('Google AI API error:', aiResponse.status, errorText);
+      throw new Error(`Google AI API error: ${aiResponse.status}`);
     }
 
     const aiData = await aiResponse.json();
     console.log('AI response:', aiData);
 
-    const analysisResult = JSON.parse(aiData.choices[0].message.content);
+    const analysisResult = JSON.parse(aiData.candidates[0].content.parts[0].text);
 
     // Store result in database
     const { data: verificationResult, error: dbError } = await supabase

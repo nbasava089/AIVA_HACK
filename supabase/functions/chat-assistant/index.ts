@@ -143,8 +143,8 @@ async function toolListFolders(req: Request, args: any) {
 
 // Generate embeddings for an asset using vision model
 async function generateEmbedding(fileData: Blob, fileType: string): Promise<number[] | null> {
-  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-  if (!LOVABLE_API_KEY) return null;
+  const GOOGLE_API_KEY = Deno.env.get("GOOGLE_API_KEY");
+  if (!GOOGLE_API_KEY) return null;
 
   // Only process images for now
   if (!fileType.startsWith("image/")) return null;
@@ -155,22 +155,30 @@ async function generateEmbedding(fileData: Blob, fileType: string): Promise<numb
     const base64 = b64encode(buffer);
     const dataUrl = `data:${fileType};base64,${base64}`;
 
-    // 1) Caption the image concisely using multimodal chat
-    const captionRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    // 1) Caption the image concisely using Google Gemini
+    const captionRes = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=" + GOOGLE_API_KEY, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: "Describe the image in one short sentence with key objects, scene, and style. Return only the sentence." },
-          { role: "user", content: [
-            { type: "text", text: "Please describe this image briefly." },
-            { type: "image_url", image_url: { url: dataUrl } }
-          ]}
-        ]
+        contents: [{
+          parts: [
+            { text: "Describe the image in one short sentence with key objects, scene, and style. Return only the sentence." },
+            { 
+              inline_data: {
+                mime_type: fileType,
+                data: base64
+              }
+            }
+          ]
+        }],
+        generationConfig: {
+          temperature: 0.4,
+          topK: 32,
+          topP: 1,
+          maxOutputTokens: 100,
+        }
       }),
     });
 
@@ -180,19 +188,20 @@ async function generateEmbedding(fileData: Blob, fileType: string): Promise<numb
     }
 
     const captionData = await captionRes.json();
-    const caption: string = captionData.choices?.[0]?.message?.content || "";
+    const caption: string = captionData.candidates?.[0]?.content?.parts?.[0]?.text || "";
     if (!caption) return null;
 
-    // 2) Generate a text embedding from the caption
-    const embRes = await fetch("https://ai.gateway.lovable.dev/v1/embeddings", {
+    // 2) Generate a text embedding from the caption using Google Text Embedding
+    const embRes = await fetch("https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=" + GOOGLE_API_KEY, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/text-embedding-004",
-        input: caption,
+        model: "models/text-embedding-004",
+        content: {
+          parts: [{ text: caption }]
+        }
       }),
     });
 
@@ -202,7 +211,7 @@ async function generateEmbedding(fileData: Blob, fileType: string): Promise<numb
     }
 
     const data = await embRes.json();
-    return data.data?.[0]?.embedding || null;
+    return data.embedding?.values || null;
   } catch (e) {
     console.error("Error generating embedding:", e);
     return null;
@@ -451,27 +460,28 @@ async function toolSearchAssets(req: Request, args: any) {
 
   if (!query) throw new Error("Missing search query");
 
-  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  const GOOGLE_API_KEY = Deno.env.get("GOOGLE_API_KEY");
   
   // Generate embedding for the search query
   let queryEmbedding: number[] | null = null;
-  if (LOVABLE_API_KEY) {
+  if (GOOGLE_API_KEY) {
     try {
-      const response = await fetch("https://ai.gateway.lovable.dev/v1/embeddings", {
+      const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=" + GOOGLE_API_KEY, {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${LOVABLE_API_KEY}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/text-embedding-004",
-          input: query,
+          model: "models/text-embedding-004",
+          content: {
+            parts: [{ text: query }]
+          }
         }),
       });
 
       if (response.ok) {
         const data = await response.json();
-        queryEmbedding = data.data?.[0]?.embedding || null;
+        queryEmbedding = data.embedding?.values || null;
       }
     } catch (e) {
       console.error("Error generating query embedding:", e);
@@ -691,8 +701,8 @@ serve(async (req) => {
   }
 
   try {
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    const GOOGLE_API_KEY = Deno.env.get("GOOGLE_API_KEY");
+    if (!GOOGLE_API_KEY) throw new Error("GOOGLE_API_KEY is not configured");
 
     const body = await req.json().catch(() => ({}));
     const clientMessages: ChatMessage[] | undefined = body.messages;
@@ -762,17 +772,41 @@ When calling upload_selected_asset, use temp_file_path: "${uploadedFile.path}" a
 
     // Utility to call AI gateway
     async function callAI(msgs: ChatMessage[]) {
-      const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      // Convert messages to Google Gemini format
+      const contents = msgs.filter(msg => msg.role !== 'system').map(msg => ({
+        role: msg.role === 'user' ? 'user' : 'model',
+        parts: [{ text: msg.content }]
+      }));
+
+      // Add system instruction as the first user message if it exists
+      const systemMsg = msgs.find(msg => msg.role === 'system');
+      if (systemMsg) {
+        contents.unshift({
+          role: 'user',
+          parts: [{ text: systemMsg.content }]
+        });
+      }
+
+      const resp = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=" + GOOGLE_API_KEY, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: msgs,
-          tools,
-          tool_choice: "auto",
+          contents: contents,
+          tools: [{
+            function_declarations: tools.map(tool => ({
+              name: tool.function.name,
+              description: tool.function.description,
+              parameters: tool.function.parameters
+            }))
+          }],
+          generationConfig: {
+            temperature: 0.7,
+            topK: 32,
+            topP: 1,
+            maxOutputTokens: 2048,
+          }
         }),
       });
 
@@ -783,21 +817,42 @@ When calling upload_selected_asset, use temp_file_path: "${uploadedFile.path}" a
             { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
-        if (resp.status === 402) {
+        if (resp.status === 403) {
           return new Response(
-            JSON.stringify({ error: "Payment required, please add funds to your Lovable AI workspace." }),
-            { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            JSON.stringify({ error: "API key invalid or quota exceeded. Please check your Google API key." }),
+            { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
         const t = await resp.text();
-        console.error("AI gateway error:", resp.status, t);
-        return new Response(JSON.stringify({ error: "AI gateway error" }), {
+        console.error("Google AI API error:", resp.status, t);
+        return new Response(JSON.stringify({ error: "Google AI API error" }), {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
       const data = await resp.json();
+      // Convert Google Gemini response to OpenAI-compatible format
+      if (data.candidates && data.candidates[0]) {
+        const candidate = data.candidates[0];
+        const functionCalls = candidate.content?.parts?.filter((part: any) => part.functionCall);
+        
+        return {
+          choices: [{
+            message: {
+              content: candidate.content?.parts?.find((part: any) => part.text)?.text || "",
+              tool_calls: functionCalls?.map((part: any, index: number) => ({
+                id: `call_${index}`,
+                type: "function",
+                function: {
+                  name: part.functionCall.name,
+                  arguments: JSON.stringify(part.functionCall.args || {})
+                }
+              })) || []
+            }
+          }]
+        };
+      }
       return data;
     }
 
